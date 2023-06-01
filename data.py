@@ -102,8 +102,16 @@ def read_cell(file_name: str) -> np.ndarray:
     return cell_list
 
 
-# TODO
-def cell_to_np(atoms_list: list[Atoms], saved_dir: str, cell_len: float, unit_conversion: float = 1.0):
+def cell_to_np(atoms_list: list[Atoms], saved_dir: str, cell_len: float, unit_conversion: float = 1.0) -> None:
+    r"""
+    Convert single cubic cell to deepmd-kit compatible 'box.raw'.
+
+    :param atoms_list: The corresponding atoms_list, mainly used for the length of the 'box.raw' file.
+    :param saved_dir: The saved directory of the 'box.raw' file.
+    :param cell_len: The single parameter for a cubic lattice constant.
+    :param unit_conversion: Convert the input box length to angstrom, default conversion=1.0.
+    :return: None.
+    """
     total = np.empty((0, 9), float)
     frame_num = len(atoms_list)
     cells = np.array([[cell_len, 0, 0], [0, cell_len, 0], [0, 0, cell_len]], dtype="float")
@@ -116,19 +124,30 @@ def cell_to_np(atoms_list: list[Atoms], saved_dir: str, cell_len: float, unit_co
 
 
 # TODO
-def cells_to_np(cells_array: np.ndarray, saved_dir: str, unit_conversion: float = 1.0):
+def cells_to_np(cells_array: np.ndarray, saved_dir: str, unit_conversion: float = 1.0) -> None:
+    r"""
+
+    :param cells_array:
+    :param saved_dir:
+    :param unit_conversion:
+    :return:
+    """
     pass
 
 
 # TODO
-def type_raw(position, output):
-    element = position.get_chemical_symbols()
+def type_raw(atoms_list: list[Atoms], saved_dir: str) -> None:
+    element = atoms_list[0].get_chemical_symbols()
     element = np.array(element)
-    tmp, indices = np.unique(element, return_inverse=True)
-    np.savetxt(output, indices, fmt='%s', newline=' ')
+    element, indices = np.unique(element, return_inverse=True)
+    saved_file1 = os.path.join(saved_dir, 'type_map.raw')
+    saved_file2 = os.path.join(saved_dir, 'type.raw')
+    np.savetxt(saved_file1, element, fmt='%s', newline=' ')
+    np.savetxt(saved_file2, indices, fmt='%s', newline=' ')
 
 
-def cp2k2dpmd(pos_file: str, frc_file: str = None, ):
+def cp2k2dpmd(save_dir: str, pos_file: str, cells: float or np.ndarray,
+              frc_file: str = None, valid_set_frac: float = 0.2):
     pass
 
 
