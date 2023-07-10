@@ -1,4 +1,3 @@
-import glob
 import os
 import shutil
 import numpy as np
@@ -6,13 +5,10 @@ import random
 from ase.io import read
 from ase import Atoms
 
-# DATA IMPORT
-
-data_path = "C:\\Users\\12429\\Desktop\\work\\Am1"  # Windows用\\,linux系统下用/
-atom_num = None
-au_to_eV = 2.72113838565563E+01
-au_to_A = 5.29177208590000E-01
-au_to_kcal = 6.2750947415E+02
+# Global dictionary
+length_dict = {'angstrom': 1.0, 'au': 0.5291772083}
+energy_dict = {'au': 1.0, 'eV': 27.2114, 'kcal/mol': 627.509474}
+force_dict = {'au/au': 1.8897261339212517, 'eV/angstrom': 27.2114}
 
 
 # FUNCTIONS OF THE PROGRAM
@@ -35,7 +31,7 @@ def xyz_to_np(atoms_list: list[Atoms], saved_dir: str, unit_conversion: float = 
         tmp = np.reshape(tmp, (1, atom_n * 3))
         total = np.concatenate((total, tmp), axis=0)
     total = total * unit_conversion
-    saved_file = os.path.join(saved_dir, 'coord.raw')
+    saved_file = os.path.join(saved_dir, 'coord.npy')
     np.save(saved_file, total)
 
 
@@ -50,14 +46,12 @@ def energy_to_np(atoms_list: list[Atoms], saved_dir: str, unit_conversion: float
     """
     total = np.empty(0, float)
     for atom in atoms_list:
-        tmp = list(atom.info.keys())
-        if "Energy:" in tmp:
-            tmp.remove("Energy:")
+        tmp = atom.info['E']
         tmp = np.array(tmp, dtype="float")
         tmp = np.reshape(tmp, 1)
         total = np.concatenate((total, tmp), axis=0)
     total = total * unit_conversion
-    saved_file = os.path.join(saved_dir, 'energy.raw')
+    saved_file = os.path.join(saved_dir, 'energy.npy')
     np.save(saved_file, total)
 
 
@@ -78,7 +72,7 @@ def force_to_np(frc_list: list[Atoms], saved_dir: str, unit_conversion: float = 
         tmp = np.reshape(tmp, (1, atom_n * 3))
         total = np.concatenate((total, tmp), axis=0)
     total = total * unit_conversion
-    saved_file = os.path.join(saved_dir, 'force.raw')
+    saved_file = os.path.join(saved_dir, 'force.npy')
     np.save(saved_file, total)
 
 
@@ -119,11 +113,10 @@ def cell_to_np(atoms_list: list[Atoms], saved_dir: str, cell_len: float, unit_co
     for frame in range(frame_num):
         total = np.concatenate((total, cells), axis=0)
     total = total * unit_conversion
-    saved_file = os.path.join(saved_dir, 'box.raw')
+    saved_file = os.path.join(saved_dir, 'box.npy')
     np.save(saved_file, total)
 
 
-# TODO
 def cells_to_np(cells_array: np.ndarray, saved_dir: str, unit_conversion: float = 1.0) -> None:
     r"""
 
@@ -132,11 +125,19 @@ def cells_to_np(cells_array: np.ndarray, saved_dir: str, unit_conversion: float 
     :param unit_conversion:
     :return:
     """
-    pass
+    saved_file = os.path.join(saved_dir, 'box.npy')
+    total = cells_array * unit_conversion
+    np.save(saved_file, total)
 
 
-# TODO
 def type_raw(atoms_list: list[Atoms], saved_dir: str) -> None:
+    r"""
+    Convert atom type to the file 'type.raw' and 'type_map.raw'.
+
+    :param atoms_list: A list of Atoms that contains the information of atom type.
+    :param saved_dir: The directory that want to save the file.
+    :return: None.
+    """
     element = atoms_list[0].get_chemical_symbols()
     element = np.array(element)
     element, indices = np.unique(element, return_inverse=True)
@@ -146,75 +147,70 @@ def type_raw(atoms_list: list[Atoms], saved_dir: str) -> None:
     np.savetxt(saved_file2, indices, fmt='%s', newline=' ')
 
 
-def cp2k2dpmd(save_dir: str, pos_file: str, cells: float or np.ndarray,
-              frc_file: str = None, valid_set_frac: float = 0.2):
-    pass
+def cp2k2dpmd(save_dir: str, pos_file: str, cells: float or np.ndarray, length_unit: str = 'angstrom',
+              ener_unit: str = 'eV', frc_file: str = None, frc_unit: str = None, valid_set_frac: float = 0.2) -> None:
+    # Checking unit
+    global length_dict, energy_dict, force_dict
+    assert length_unit in length_dict.keys(), 'Not allowed length unit or misspell the word.'
+    assert ener_unit in energy_dict.keys(), 'Not allowed energy unit or misspell the word.'
+    if frc_file is not None:
+        assert frc_unit in force_dict.keys(), 'Not allowed force unit or misspell the word.'
+    # Generating saving directory
+    save_dir = os.path.abspath(save_dir)
+    data_0 = os.path.join(save_dir, 'data_0')
+    data_0_set = os.path.join(data_0, 'set.000')
+    data_1 = os.path.join(save_dir, 'data_1')
+    data_1_set = os.path.join(data_1, 'set.000')
+    for path in [data_0_set, data_0, data_1_set, data_1]:
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+    for path in [data_0, data_0_set, data_1, data_1_set]:
+        os.mkdir(path)
+    # Reading file
+    atoms = read(pos_file, index=':')
+    # Training & validation set split
+    index = list(range(len(atoms)))
+    random.shuffle(index)
+    test_index = index[0:int(len(atoms)*valid_set_frac)+1]
+    train_atoms = []
+    test_atoms = []
+    for i in range(len(atoms)):
+        if i in test_index:
+            test_atoms.append(atoms[i])
+        else:
+            train_atoms.append((atoms[i]))
+    # Saving file:
+    xyz_to_np(train_atoms, data_0_set, length_dict['angstrom']/length_dict[length_unit])
+    xyz_to_np(test_atoms, data_1_set, length_dict['angstrom']/length_dict[length_unit])
+    energy_to_np(train_atoms, data_0_set, energy_dict['eV']/energy_dict[ener_unit])
+    energy_to_np(test_atoms, data_1_set, energy_dict['eV']/energy_dict[ener_unit])
+    if frc_file is not None:
+        forces = read(frc_file, index=':')
+        train_force = []
+        test_force = []
+        for i in range(len(atoms)):
+            if i in test_index:
+                test_force.append(forces[i])
+            else:
+                train_force.append(forces[i])
+        force_to_np(train_force, data_0_set, force_dict['eV/angstrom']/force_dict[frc_unit])
+        force_to_np(test_force, data_1_set, force_dict['eV/angstrom']/force_dict[frc_unit])
+    if isinstance(cells, float):
+        cell_to_np(train_atoms, data_0_set, cells, length_dict['angstrom']/length_dict[length_unit])
+        cell_to_np(test_atoms, data_1_set, cells, length_dict['angstrom']/length_dict[length_unit])
+    elif isinstance(cells, np.ndarray):
+        cells_to_np(cells, data_0_set, length_dict['angstrom']/length_dict[length_unit])
+        cells_to_np(cells, data_1_set, length_dict['angstrom']/length_dict[length_unit])
+    else:
+        raise TypeError(f'Expect float or numpy.ndarray, but got {type(cells)} instead.')
+    type_raw(atoms, data_0)
+    type_raw(atoms, data_1)
 
 
-# MAIN PROGRAM
+def main():
+    cells = read_cell('U_128-1.cell')
+    cp2k2dpmd('./', 'U_128-pos-1.xyz', cells, ener_unit='au', frc_file='U_128-frc-1.xyz', frc_unit='au/au')
 
-# data_path = os.path.abspath(data_path)
-# pos_path = os.path.join(data_path, "Am1_*")
-# frc_path = os.path.join(data_path, "*frc-1.xyz")
-# pos_path = glob.iglob(pos_path)
-
-# for po in pos_path:
-#     file_path = os.path.join(po, "*.xyz")
-#     set_path_1 = os.path.join(po, "data_0")
-#     set_path_2 = os.path.join(set_path_1, "set.000")
-#     set_path_3 = os.path.join(po, "data_1")
-#     set_path_4 = os.path.join(set_path_3, "set.000")
-#     file_path = glob.iglob(file_path)
-#     saved_pos = []
-#     atom_num = None
-#     for file in file_path:
-#         temp = read(file, index=0)
-#         ind = temp.get_atomic_numbers()
-#         ind = ind == 1
-#         del temp[ind]
-#         if atom_num is None:
-#             atom_num = temp.get_global_number_of_atoms()
-#         saved_pos.append(temp)
-#     train_pos = []
-#     valid_pos = []
-#     for po in saved_pos:
-#         randflag = random.random()
-#         if randflag < 0.8:
-#             train_pos.append(po)
-#         else:
-#             valid_pos.append(po)
-#
-#     if os.path.isdir(set_path_2):
-#         shutil.rmtree(set_path_2)
-#     if os.path.isdir(set_path_1):
-#         shutil.rmtree(set_path_1)
-#     if os.path.isdir(set_path_3):
-#         shutil.rmtree(set_path_3)
-#     if os.path.isdir(set_path_4):
-#         shutil.rmtree(set_path_4)
-#     os.mkdir(set_path_1)
-#     os.mkdir(set_path_2)
-#     os.mkdir(set_path_3)
-#     os.mkdir(set_path_4)
-#     type_path = os.path.join(set_path_1, "type.raw")
-#     coord_path = os.path.join(set_path_2, "coord.npy")
-#     box_path = os.path.join(set_path_2, "box.npy")
-#     energy_path = os.path.join(set_path_2, "energy.npy")
-#     type_path_v = os.path.join(set_path_3, "type.raw")
-#     coord_path_v = os.path.join(set_path_4, "coord.npy")
-#     box_path_v = os.path.join(set_path_4, "box.npy")
-#     energy_path_v = os.path.join(set_path_4, "energy.npy")
-#
-#     xyz_to_np(train_pos, atom_num, coord_path)
-#     energy_to_np(train_pos, energy_path, au_to_eV / au_to_kcal)
-#     cell_to_np(train_pos, box_path, cell)
-#     type_raw(train_pos[0], type_path)
-#
-#     xyz_to_np(valid_pos, atom_num, coord_path_v)
-#     energy_to_np(valid_pos, energy_path_v, au_to_eV / au_to_kcal)
-#     cell_to_np(valid_pos, box_path_v, cell)
-#     type_raw(valid_pos[0], type_path_v)
 
 if __name__ == '__main__':
-    atom_list = read('U_128-pos-1.xyz', index=':')
-    print(len(atom_list[0]))
+    main()
