@@ -8,7 +8,7 @@ from ase import Atoms
 # Global dictionary
 length_dict = {'angstrom': 1.0, 'au': 0.5291772083}
 energy_dict = {'au': 1.0, 'eV': 27.2114, 'kcal/mol': 627.509474}
-force_dict = {'au/au': 0.529177, 'eV/angstrom': 27.2114}
+force_dict = {'au/au': 0.52917721067, 'eV/angstrom': 27.2114}
 
 
 # FUNCTIONS OF THE PROGRAM
